@@ -447,7 +447,7 @@ def process_cline():
         short_args = "aynekt:c:s:u:p:f:d:"
         long_args = ["append-to-mboxes", "yes-overwrite-mboxes",
                      "ssl", "timeout", "keyfile=", "certfile=", "server=", "user=", "pass=",
-                     "folders=", "exclude-folders=", "thunderbird", "nospinner", "mbox-dir=", "icloud"]
+                     "folders=", "exclude-folders=", "thunderbird", "nospinner", "mbox-dir=", "icloud", "proxy="]
         opts, extraargs = getopt.getopt(sys.argv[1:], short_args, long_args)
     except getopt.GetoptError:
         print_usage()
@@ -492,6 +492,8 @@ def process_cline():
                 errors.append("Can't read password: %s" % (str(ex)))
         elif option in ("-t", "--timeout"):
             config['timeout'] = value
+        elif option in ("--proxy"):
+            config['proxy'] = value
         elif option == "--thunderbird":
             config['thunderbird'] = True
         elif option == "--nospinner":
@@ -575,7 +577,7 @@ def get_config():
         sys.exit(2)
 
     # prompt for password, if necessary
-    if 'pass' not in config:
+    if 'pass' not in config and 'proxy' not in config:
         config['pass'] = getpass.getpass()
 
     # defaults
@@ -598,7 +600,11 @@ def connect_and_login(config):
         if config['timeout']:
             socket.setdefaulttimeout(config['timeout'])
 
-        if config['usessl'] and 'keyfilename' in config:
+        if config['proxy']:
+            print ("Connecting to server '%s' via proxy %s" % (
+                config['server'], config['proxy']))
+            server = imaplib.IMAP4_stream(config['proxy'] + " " + config['server'])
+        elif config['usessl'] and 'keyfilename' in config:
             print ("Connecting to '%s' TCP port %d," % (
                 config['server'], config['port']),)
             print ("SSL, key from %s," % (config['keyfilename']),)
@@ -614,11 +620,12 @@ def connect_and_login(config):
                 config['server'], config['port']))
             server = imaplib.IMAP4(config['server'], config['port'])
 
-        # speed up interactions on TCP connections using small packets
-        server.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        if 'proxy' not in config:
+            # speed up interactions on TCP connections using small packets
+            server.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            print ("Logging in as '%s'" % (config['user']))
+            server.login(config['user'], config['pass'])
 
-        print ("Logging in as '%s'" % (config['user']))
-        server.login(config['user'], config['pass'])
     except socket.gaierror as e:
         (err, desc) = e
         print ("ERROR: problem looking up server '%s' (%s %s)" % (
@@ -726,10 +733,10 @@ def main():
         server.logout()
     except socket.error as e:
        
-        print ("ERROR:", e)
+        print ("socket ERROR:", e)
         sys.exit(4)
     except imaplib.IMAP4.error as e:
-        print ("ERROR:", e)
+        print ("imaplib ERROR:", e)
         sys.exit(5)
 
 
