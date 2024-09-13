@@ -600,7 +600,7 @@ def connect_and_login(config):
         if config['timeout']:
             socket.setdefaulttimeout(config['timeout'])
 
-        if config['proxy']:
+        if 'proxy' in config and config['proxy']:
             print ("Connecting to server '%s' via proxy %s" % (
                 config['server'], config['proxy']))
             server = imaplib.IMAP4_stream(config['proxy'] + " " + config['server'])
