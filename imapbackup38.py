@@ -721,10 +721,10 @@ def main():
                     if msg_id not in fil_messages:
                         new_messages[msg_id] = fol_messages[msg_id]
 
-                # for f in new_messages:
-                #  print "%s : %s" % (f, new_messages[f])
+                for f in new_messages:
+                    print ("%s : %s" % (f, new_messages[f]))
 
-                download_messages(server, filename, new_messages, config['overwrite'], config['nospinner'], config['thunderbird'], basedir, config['icloud'])
+                #download_messages(server, filename, new_messages, config['overwrite'], config['nospinner'], config['thunderbird'], basedir, config['icloud'])
 
             except SkipFolderException as e:
                 print (e)
