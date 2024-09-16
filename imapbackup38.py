@@ -279,7 +279,7 @@ def resend_messages(server, mailserver, mailuser, messages, nospinner):
 
         msgcounter = msgcounter + 1
         if msgcounter % 30 == 0:
-            print('Pause 30')
+            print('Pause 60 sec')
             time.sleep(60)
         size = len(text_bytes)
         biggest = max(size, biggest)
