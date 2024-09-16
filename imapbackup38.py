@@ -54,6 +54,11 @@ import imaplib
 import socket
 import re
 import hashlib
+# email resending
+import smtplib
+import ssl
+# debug
+import traceback
 
 class SkipFolderException(Exception):
     """Indicates aborting processing of current folder, continue with next folder."""
@@ -208,6 +213,86 @@ def download_messages(server, filename, messages, overwrite, nospinner, thunderb
     print (": %s total, %s for largest message" % (pretty_byte_count(total),
                                                   pretty_byte_count(biggest)))
 
+def resend_messages(server, mailserver, mailuser, messages, nospinner):
+    """Resend messages from folder and append to mailbox"""
+
+    # nothing to do
+    if not len(messages):
+        print ("New messages: 0")
+        return
+
+    spinner = Spinner("Resending %s new messages to %s" % (len(messages), mailuser),
+                      nospinner)
+    total = biggest = 0
+    from_re = re.compile(b"\n(>*)From ")
+
+    port = 25
+    # Create a secure SSL context
+    # context = ssl.create_default_context()
+
+    # Try to log in to server and send email
+    smtpcon = None
+    # each new message
+    msgcounter = 0
+    for msg_id in messages.keys():
+
+        # fetch message
+        msg_id_str = str(messages[msg_id])
+        typ, data = server.fetch(msg_id_str, "(BODY.PEEK[])")
+        assert('OK' == typ)
+        typ, fromdata = server.fetch(msg_id_str,"(BODY.PEEK[HEADER.FIELDS (FROM)])")
+        assert('OK' == typ)
+        fromemail = (fromdata[0][1].rstrip())
+        prefix = b'From: '
+        if fromemail.startswith(prefix):
+            fromemail = fromemail[len(prefix):]
+        data_bytes = data[0][1]
+        text_bytes = data_bytes.strip().replace(b'\r', b'')
+        
+        try:
+            smtpcon = smtplib.SMTP(mailserver,port)
+            smtpcon.ehlo()
+            # latin1 ist the best we can do when we know nothing
+            smtpcon.sendmail(fromemail.decode('latin1'), mailuser, text_bytes)
+        except Exception: # as e:
+            # Print any error messages to stdout
+            #print(e)
+            print(traceback.format_exc())
+            # try to do the best of the situation
+            # as we did not resend the message
+            print("Setting message %s unseen" % msg_id_str)
+            try:
+                server.store(msg_id_str, '-FLAGS', '\\Seen')
+            except Exception as e:
+                print('Server set unseen: ', e)
+        else:
+            print("Setting message %s seen" % msg_id_str)
+            try:
+                server.store(msg_id_str, '+FLAGS', '\\Seen')
+            except Exception as e:
+                # Print any error messages to stdout
+                print('Server set seen: ', e)
+        try:
+            smtpcon.quit()
+        except:
+            print('SMTP quit error (ignored)')
+
+        msgcounter = msgcounter + 1
+        if msgcounter % 30 == 0:
+            print('Pause 30')
+            time.sleep(60)
+        size = len(text_bytes)
+        biggest = max(size, biggest)
+        total += size
+
+        del data
+        gc.collect()
+        spinner.spin()
+
+    spinner.stop()
+    print (": %s total, %s for largest message" % (pretty_byte_count(total),
+                                                  pretty_byte_count(biggest)))
+    
 
 def scan_file(filename, overwrite, nospinner, basedir):
     """Gets IDs of messages in the specified mbox file"""
@@ -271,11 +356,15 @@ def scan_folder(server, foldername, nospinner):
     foldername = '"{}"'.format(foldername)
     spinner = Spinner("Folder %s" % foldername, nospinner)
     try:
-        typ, data = server.select(foldername, readonly=True)
+        typ, data = server.select(foldername, readonly=False)
         if 'OK' != typ:
             raise SkipFolderException("SELECT failed: %s" % data)
-        num_msgs = int(data[0])
-
+        typ, data = server.search(None, 'UNSEEN')
+        if 'OK' != typ:
+            raise SkipFolderException("SEARCH failed: %s" % data)
+        msg_numbers = data[0].split()
+        print ('Here:',msg_numbers)
+        num_msgs = len(msg_numbers)
         # Retrieve all Message-Id headers, making sure we don't mark all messages as read.
         #
         # The result is an array of result tuples with a terminating closing parenthesis
@@ -288,17 +377,19 @@ def scan_folder(server, foldername, nospinner):
         #   (b'2 (BODY[...', b'Message-Id: ...'), b')', # indices 2 and 3
         #   ...
         #  ]
-        if num_msgs > 0:
-            typ, data = server.fetch(f'1:{num_msgs}', '(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])')
-            if 'OK' != typ:
-                raise SkipFolderException("FETCH failed: %s" % (data))
+        #if num_msgs > 0:
+        #    typ, data = server.fetch(f'1:{num_msgs}', '(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])')
+        #    if 'OK' != typ:
+        #        raise SkipFolderException("FETCH failed: %s" % (data))
 
         # each message
-        for i in range(0, num_msgs):
-            num = 1 + i
-
+        for messagenumstr in msg_numbers:
+            typ, data = server.fetch(messagenumstr, '(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])')
+            if 'OK' != typ:
+                raise SkipFolderException("FETCH failed: %s" % (data))
+            
             # Double the index because of the terminating parenthesis after each tuple.
-            data_str = str(data[2 * i][1], 'utf-8', 'replace')
+            data_str = str(data[0][1], 'utf-8', 'replace')
             header = data_str.strip()
 
             # remove newlines inside Message-Id (a dumb Exchange trait)
@@ -307,20 +398,20 @@ def scan_folder(server, foldername, nospinner):
                 msg_id = MSGID_RE.match(header).group(1)
                 if msg_id not in messages.keys():
                     # avoid adding dupes
-                    messages[msg_id] = num
+                    messages[msg_id] = int(messagenumstr)
             except (IndexError, AttributeError):
                 # Some messages may have no Message-Id, so we'll synthesise one
                 # (this usually happens with Sent, Drafts and .Mac news)
                 msg_typ, msg_data = server.fetch(
-                    str(num), '(BODY[HEADER.FIELDS (FROM TO CC DATE SUBJECT)])')
+                    messagenumstr, '(BODY[HEADER.FIELDS (FROM TO CC DATE SUBJECT)])')
                 if 'OK' != msg_typ:
                     raise SkipFolderException(
-                        "FETCH %s failed: %s" % (num, msg_data))
+                        "FETCH %s failed: %s" % (messagenumstr, msg_data))
                 data_str = str(msg_data[0][1], 'utf-8', 'replace')
                 header = data_str.strip()
                 header = header.replace('\r\n', '\t').encode('utf-8')
                 messages['<' + UUID + '.' +
-                         hashlib.sha1(header).hexdigest() + '>'] = num
+                         hashlib.sha1(header).hexdigest() + '>'] = int(messagenumstr)
             spinner.spin()
     finally:
         spinner.stop()
@@ -374,7 +465,7 @@ def parse_string_list(row):
 def parse_list(row):
     """Parses response of LIST command into a list"""
     row = row.strip()
-    print(row)
+    # print(row)
     paren_list, row = parse_paren_list(row)
     string_list = parse_string_list(row)
     assert(len(string_list) == 2)
@@ -725,6 +816,7 @@ def main():
                     print ("%s : %s" % (f, new_messages[f]))
 
                 #download_messages(server, filename, new_messages, config['overwrite'], config['nospinner'], config['thunderbird'], basedir, config['icloud'])
+                resend_messages(server, 'mx1.besserwisser.org', 'haba@besserwisser.org', new_messages, config['nospinner'])
 
             except SkipFolderException as e:
                 print (e)
