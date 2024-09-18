@@ -363,7 +363,6 @@ def scan_folder(server, foldername, nospinner):
         if 'OK' != typ:
             raise SkipFolderException("SEARCH failed: %s" % data)
         msg_numbers = data[0].split()
-        print ('Here:',msg_numbers)
         num_msgs = len(msg_numbers)
         # Retrieve all Message-Id headers, making sure we don't mark all messages as read.
         #
@@ -418,7 +417,7 @@ def scan_folder(server, foldername, nospinner):
         print (":",)
 
     # done
-    print ("%d messages" % (len(messages.keys())))
+    print ("%d unseen messages" % (len(messages.keys())))
     return messages
 
 
@@ -806,14 +805,13 @@ def main():
 
                 fol_messages = scan_folder(
                     server, foldername, config['nospinner'])
-                fil_messages = scan_file(filename, config['overwrite'], config['nospinner'], basedir)
+                #fil_messages = scan_file(filename, config['overwrite'], config['nospinner'], basedir)
                 new_messages = {}
                 for msg_id in fol_messages.keys():
-                    if msg_id not in fil_messages:
-                        new_messages[msg_id] = fol_messages[msg_id]
+                    new_messages[msg_id] = fol_messages[msg_id]
 
-                for f in new_messages:
-                    print ("%s : %s" % (f, new_messages[f]))
+                #for f in new_messages:
+                #    print ("%s : %s" % (f, new_messages[f]))
 
                 #download_messages(server, filename, new_messages, config['overwrite'], config['nospinner'], config['thunderbird'], basedir, config['icloud'])
                 resend_messages(server, 'mx1.besserwisser.org', 'haba@besserwisser.org', new_messages, config['nospinner'])
