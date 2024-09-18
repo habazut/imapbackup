@@ -738,32 +738,6 @@ def connect_and_login(config):
 
 
 
-def create_basedir(basedir):
-    """ Create the base directory on disk """
-    if os.path.isdir(basedir):
-        return
-
-    try:
-        os.makedirs(basedir)
-    except OSError as e:
-        raise
-
-
-
-def create_folder_structure(names,basedir):
-    """ Create the folder structure on disk """
-    for imap_foldername, filename in sorted(names):
-        disk_foldername = os.path.split(filename)[0]
-        if disk_foldername:
-            try:
-                # print "*** makedirs:", disk_foldername  # *DEBUG
-                disk_path = os.path.join(basedir,disk_foldername)
-                os.makedirs(disk_path)
-            except OSError as e:
-                if e.errno != 17:
-                    raise
-
-
 def main():
     """Main entry point"""
     try:
@@ -782,18 +756,6 @@ def main():
             names = list(filter(lambda x: x[0] in dirs, names))
         elif config.get('exclude-folders'):
             exclude_folders = list(map(lambda x: x.strip(), config.get('exclude-folders').split(',')))
-
-        basedir = config.get('basedir')
-        if basedir.startswith('~'):
-            basedir = os.path.expanduser(basedir)
-        else:
-            basedir = os.path.abspath(config.get('basedir'))
-        
-        create_basedir(basedir)
-
-        # for n, name in enumerate(names): # *DEBUG
-        #   print n, name # *DEBUG
-        create_folder_structure(names,basedir)
 
         for name_pair in names:
             try:
