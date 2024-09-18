@@ -137,82 +137,6 @@ def string_from_file(value):
         return content.read().strip()
 
 
-def download_messages(server, filename, messages, overwrite, nospinner, thunderbird, basedir, icloud):
-    """Download messages from folder and append to mailbox"""
-
-    fullname = os.path.join(basedir,filename)
-
-    if overwrite and os.path.exists(fullname):
-        print ("Deleting mbox: {0} at: {1}".format(filename,fullname))
-        os.remove(fullname)
-    
-    # Open disk file for append in binary mode
-    mbox = open(fullname, 'ab')
-
-    # the folder has already been selected by scanFolder()
-
-    # nothing to do
-    if not len(messages):
-        print ("New messages: 0")
-        mbox.close()
-        return
-
-    spinner = Spinner("Downloading %s new messages to %s" % (len(messages), filename),
-                      nospinner)
-    total = biggest = 0
-    from_re = re.compile(b"\n(>*)From ")
-
-    # each new message
-    for msg_id in messages.keys():
-
-        # This "From" and the terminating newline below delimit messages
-        # in mbox files.  Note that RFC 4155 specifies that the date be
-        # in the same format as the output of ctime(3), which is required
-        # by ISO C to use English day and month abbreviations.
-        buf = "From nobody %s\n" % time.ctime()
-        # If this is one of our synthesised Message-IDs, insert it before
-        # the other headers
-        if UUID in msg_id:
-            buf = buf + "Message-Id: %s\n" % msg_id
-
-        # convert to bytes before writing to file of type binary
-        buf_bytes=bytes(buf,'utf-8')
-        mbox.write(buf_bytes)
-
-        # fetch message
-        msg_id_str = str(messages[msg_id])
-        typ, data = server.fetch(msg_id_str, "(BODY.PEEK[])" if icloud else "(RFC822)")
-
-
-        assert('OK' == typ)
-        data_bytes = data[0][1]
-
-        text_bytes = data_bytes.strip().replace(b'\r', b'')
-        if thunderbird:
-            # This avoids Thunderbird mistaking a line starting "From  " as the start
-            # of a new message. _Might_ also apply to other mail lients - unknown
-            text_bytes = text_bytes.replace(b"\nFrom ", b"\n From ")
-        else:
-            # Perform >From quoting as described by RFC 4155 and the qmail docs.
-            # https://www.rfc-editor.org/rfc/rfc4155.txt
-            # http://qmail.org/qmail-manual-html/man5/mbox.html
-            text_bytes = from_re.sub(b"\n>\\1From ", text_bytes)
-        mbox.write(text_bytes)
-        mbox.write(b'\n\n')
-
-        size = len(text_bytes)
-        biggest = max(size, biggest)
-        total += size
-
-        del data
-        gc.collect()
-        spinner.spin()
-
-    mbox.close()
-    spinner.stop()
-    print (": %s total, %s for largest message" % (pretty_byte_count(total),
-                                                  pretty_byte_count(biggest)))
-
 def resend_messages(server, mailserver, mailuser, messages, nospinner):
     """Resend messages from folder and append to mailbox"""
 
@@ -775,7 +699,6 @@ def main():
                 #for f in new_messages:
                 #    print ("%s : %s" % (f, new_messages[f]))
 
-                #download_messages(server, filename, new_messages, config['overwrite'], config['nospinner'], config['thunderbird'], basedir, config['icloud'])
                 resend_messages(server, 'mx1.besserwisser.org', 'haba@besserwisser.org', new_messages, config['nospinner'])
 
             except SkipFolderException as e:
