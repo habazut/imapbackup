@@ -147,6 +147,8 @@ def resend_messages(server, mailserver, mailuser, messages, nospinner):
 
     spinner = Spinner("Resending %s new messages to %s" % (len(messages), mailuser),
                       nospinner)
+    if nospinner:
+        print("")
     total = biggest = 0
     from_re = re.compile(b"\n(>*)From ")
 
