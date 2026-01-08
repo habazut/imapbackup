@@ -38,7 +38,7 @@ __all__ = ["IMAP4", "IMAP4_stream", "Internaldate2tuple",
 #       Globals
 
 CRLF = b'\r\n'
-Debug = 0
+Debug = 10
 IMAP4_PORT = 143
 IMAP4_SSL_PORT = 993
 AllowedVersions = ('IMAP4REV1', 'IMAP4')        # Most recent first
@@ -186,6 +186,7 @@ class IMAP4:
     class readonly(abort): pass     # Mailbox status changed to READ-ONLY
 
     def __init__(self, host='', port=IMAP4_PORT, timeout=None):
+        self.startup = True
         self.debug = Debug
         self.state = 'LOGOUT'
         self.literal = None             # A literal argument to a command
@@ -244,7 +245,15 @@ class IMAP4:
                 self._mesg('imaplib version %s' % __version__)
                 self._mesg('new IMAP4 connection, tag=%s' % self.tagpre)
 
-        self.welcome = self._get_response()
+        print (self.startup)
+        if self.startup:
+            while True:
+                print ('ping')
+                self.welcome = self._get_response()
+                print (self.welcome)
+                if self.welcome.startswith(b'*'):
+                    break
+            self.startup = False
         if 'PREAUTH' in self.untagged_responses:
             self.state = 'AUTH'
         elif 'OK' in self.untagged_responses:
@@ -1100,7 +1109,7 @@ class IMAP4:
                 if self._match(Continuation, resp):
                     self.continuation_response = self.mo.group('data')
                     return None     # NB: indicates continuation
-
+                return b'FOO'
                 raise self.abort("unexpected response: %r" % resp)
 
             typ = self.mo.group('type')
@@ -1186,9 +1195,13 @@ class IMAP4:
 
         # Protocol mandates all lines terminated by CRLF
         if not line.endswith(b'\r\n'):
-            raise self.abort('socket error: unterminated line: %r' % line)
+            if line.endswith(b'\n'):
+                line=line[:-1]
+        else:
+            line = line[:-2]
+#            return b'* BAD ' + line[:-2]
+#            raise self.abort('socket error: unterminated line: %r' % line)
 
-        line = line[:-2]
         if __debug__:
             if self.debug >= 4:
                 self._mesg('< %r' % line)
