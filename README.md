@@ -1,9 +1,12 @@
-[![Language grade: Python](https://img.shields.io/lgtm/grade/python/g/rcarmo/imapbackup.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/rcarmo/imapbackup/context:python)
 
 imapbackup
 ==========
 
 A Python script for creating full backups of IMAP mailboxes
+
+## Modification
+
+Modified by haba to use imapresend38.py to send emails from IMAP into SMTP for delivery again
 
 ## Background
 
