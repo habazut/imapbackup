@@ -162,6 +162,10 @@ def resend_messages(server, mailserver, mailuser, messages, nospinner):
     msgcounter = 0
     for msg_id in messages.keys():
 
+        # for debug
+        #if msgcounter > 0:
+        #    return
+        
         # fetch message
         msg_id_str = str(messages[msg_id])
         typ, data = server.fetch(msg_id_str, "(BODY.PEEK[])")
@@ -176,23 +180,35 @@ def resend_messages(server, mailserver, mailuser, messages, nospinner):
         text_bytes = data_bytes.strip().replace(b'\r', b'')
         
         try:
+            fromaddr = fromemail.decode('latin1')
+            if "\r\n" in fromaddr:
+                print("Found CRLF in %s" % fromaddr)
+                # special case for some addr I got
+                # smtplib.SMTPSenderRefused: (501, b'5.1.7 Bad sender address syntax', '""XXX@athena.nsc.liu.se,\r\n        " via NAISS support" <resource-request@pdc.kth.se>')
+                try:
+                    startpos=fromaddr.rindex("<")
+                    endpos=fromaddr.rindex(">")+1
+                    fromaddr =fromaddr[startpos:endpos]
+                except:
+                    fromaddr = '<unparsable@fromaddr.probably.spam>'
             smtpcon = smtplib.SMTP(mailserver,port)
             smtpcon.ehlo()
             # latin1 ist the best we can do when we know nothing
-            smtpcon.sendmail(fromemail.decode('latin1'), mailuser, text_bytes)
+            smtpcon.sendmail(fromaddr, mailuser, text_bytes)
         except Exception: # as e:
             # Print any error messages to stdout
             #print(e)
             print(traceback.format_exc())
             # try to do the best of the situation
             # as we did not resend the message
+            print("Failed to send message to %s" % fromemail.decode('latin1'))
             print("Setting message %s unseen" % msg_id_str)
             try:
                 server.store(msg_id_str, '-FLAGS', '\\Seen')
             except Exception as e:
                 print('Server set unseen: ', e)
         else:
-            print("Setting message %s seen" % msg_id_str)
+            print("Setting message %s from %s seen" % (msg_id_str, fromaddr))
             try:
                 server.store(msg_id_str, '+FLAGS', '\\Seen')
             except Exception as e:
@@ -450,6 +466,7 @@ def print_usage():
     print ("                               character is '@', treat the rest as a path to a file")
     print ("                               containing the password.  Leading '\' makes it literal.")
     print (" -t SECS --timeout=SECS        Sets socket timeout to SECS seconds.")
+    print (" --maxcount=NUM                Max number of emails to resend.")
     print (" --thunderbird                 Create Mozilla Thunderbird compatible mailbox")
     print (" --nospinner                   Disable spinner (makes output log-friendly)")
     print (" --icloud                      Enable iCloud compatibility mode (for iCloud mailserver)")
@@ -463,7 +480,8 @@ def process_cline():
         short_args = "aynekt:c:s:u:p:f:d:"
         long_args = ["append-to-mboxes", "yes-overwrite-mboxes",
                      "ssl", "timeout", "keyfile=", "certfile=", "server=", "user=", "pass=",
-                     "folders=", "exclude-folders=", "thunderbird", "nospinner", "mbox-dir=", "icloud", "proxy="]
+                     "folders=", "exclude-folders=", "thunderbird", "nospinner", "mbox-dir=",
+                     "icloud", "proxy=", "maxcount="]
         opts, extraargs = getopt.getopt(sys.argv[1:], short_args, long_args)
     except getopt.GetoptError:
         print_usage()
@@ -471,7 +489,7 @@ def process_cline():
     warnings = []
     config = {'overwrite': False, 'usessl': False,
               'thunderbird': False, 'nospinner': False,
-              'basedir': ".", 'icloud': False}
+              'basedir': ".", 'icloud': False, 'maxcount': 0}
     errors = []
 
     # empty command line
@@ -508,6 +526,8 @@ def process_cline():
                 errors.append("Can't read password: %s" % (str(ex)))
         elif option in ("-t", "--timeout"):
             config['timeout'] = value
+        elif option in ("--maxcount"):
+            config['maxcount'] = int(value)
         elif option in ("--proxy"):
             config['proxy'] = value
         elif option == "--thunderbird":
@@ -695,13 +715,19 @@ def main():
                     server, foldername, config['nospinner'])
                 #fil_messages = scan_file(filename, config['overwrite'], config['nospinner'], basedir)
                 new_messages = {}
+                counter = 0
+                maxcount = 3
                 for msg_id in fol_messages.keys():
+                    if config['maxcount'] > 0 and counter >= config['maxcount']:
+                        break
+                    counter = counter+1
                     new_messages[msg_id] = fol_messages[msg_id]
 
-                #for f in new_messages:
-                #    print ("%s : %s" % (f, new_messages[f]))
+#                for f in new_messages:
+#                    print ("%s : %s" % (f, new_messages[f]))
 
-                resend_messages(server, 'mx1.besserwisser.org', 'haba@besserwisser.org', new_messages, config['nospinner'])
+                #resend_messages(server, 'mx1.besserwisser.org', 'haba@besserwisser.org', new_messages, config['nospinner'])
+                resend_messages(server, 'jaja2.besserwisser.org', 'haba@besserwisser.org', new_messages, config['nospinner'])
 
             except SkipFolderException as e:
                 print (e)
